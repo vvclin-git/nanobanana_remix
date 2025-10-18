@@ -1,0 +1,277 @@
+:root {
+  --font-body: 'Inter', sans-serif;
+  --font-special: 'Permanent Marker', cursive;
+  --yellow-primary: #facc15;
+  --yellow-secondary: #fde047;
+  --text-neutral-200: #e5e7eb;
+  --text-neutral-400: #9ca3af;
+  --text-neutral-500: #6b7280;
+  --text-neutral-700: #374151;
+}
+
+/* --- Loader --- */
+#loader {
+  position: absolute;
+  border: 5px solid #4b5563;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Download Button --- */
+#download-button {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 0.5rem;
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    opacity: 0.8;
+}
+
+#download-button:hover {
+    background-color: rgba(0, 0, 0, 0.8);
+    transform: scale(1.1);
+    opacity: 1;
+}
+
+/* --- New Tab-based Options Styles --- */
+.category-tab {
+  flex-grow: 1;
+  background-color: #353739;
+  border: 1px solid #4b5563;
+  color: #d1d5db;
+  padding: 0.6rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-weight: 600;
+}
+
+.category-tab:hover {
+  background-color: #4b5563;
+}
+
+.category-tab.selected {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+#options-container-shared {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: #35373950;
+  border-radius: 0.5rem;
+  margin-bottom: 0.25rem;
+  justify-content: center;
+}
+
+/* --- General Option Button Styles (reused) --- */
+.option-button {
+  background-color: #353739;
+  border: 1px solid #4b5563;
+  color: #d1d5db;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.option-button:hover {
+  background-color: #4b5563;
+  border-color: #6b7280;
+}
+
+.option-button.selected {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+  transform: scale(1.05);
+}
+
+.option-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Banner --- */
+.app-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  padding: 0.75rem;
+  z-index: 50;
+  color: var(--text-neutral-400);
+  font-size: 0.875rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: var(--font-body);
+}
+
+.app-banner-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 0.8fr auto 1.2fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1rem;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-neutral-500);
+  white-space: nowrap;
+  justify-self: start;
+}
+
+.banner-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2.5rem;
+  justify-self: end;
+}
+
+.remix-ideas {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-neutral-400);
+  text-align: right;
+  min-width: 0;
+  justify-self: center;
+}
+
+.remix-prompt {
+  flex-shrink: 0;
+}
+
+.remix-text-container {
+  position: relative;
+  width: 16rem;
+  height: 1.25rem;
+  overflow: hidden;
+}
+
+.remix-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  font-weight: 500;
+  color: var(--text-neutral-200);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.banner-buttons {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.banner-button {
+  font-family: var(--font-special);
+  font-size: 1rem;
+  text-align: center;
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  transition: transform 0.2s, background-color 0.2s, color 0.2s;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: var(--text-neutral-400);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.close-button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-neutral-200);
+}
+
+.button-ai-studio {
+  color: black;
+  background-color: var(--yellow-primary);
+  box-shadow: 1px 1px 0px 1px rgba(0,0,0,0.2);
+}
+
+.button-ai-studio:hover {
+  transform: scale(1.05) rotate(-2deg);
+  background-color: var(--yellow-secondary);
+}
+
+.button-gemini-chat {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.button-gemini-chat:hover {
+  transform: scale(1.05) rotate(2deg);
+  background-color: white;
+  color: black;
+}
+
+@media (max-width: 1024px) {
+  .app-banner-content {
+    grid-template-columns: 1fr 1fr;
+  }
+  .remix-ideas {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .banner-left { display: none; }
+  .app-banner-content {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+  .banner-right {
+    justify-content: center;
+    justify-self: center;
+  }
+}
+
+@media (max-width: 500px) {
+    .banner-buttons {
+        gap: 0.75rem;
+    }
+    .banner-button {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+    }
+}

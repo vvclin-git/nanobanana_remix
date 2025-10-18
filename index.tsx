@@ -74,6 +74,41 @@ async function fileUrlToBase64(url: string): Promise<string> {
   });
 }
 
+/**
+ * Generates a descriptive filename for the downloaded image.
+ */
+function generateFilename(fromPrompt?: string): string {
+  const now = new Date();
+  const datePart = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const sanitize = (str: string) =>
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]+/g, '') // remove special chars except space
+      .trim()
+      .replace(/\s+/g, '-'); // replace spaces with dashes
+
+  if (fromPrompt) {
+    // Use the first few words of the prompt for the filename
+    const promptPart = sanitize(fromPrompt.split(/\s+/).slice(0, 5).join(' '));
+    return `${datePart}_${promptPart}.png`;
+  }
+
+  const parts = [
+    datePart,
+    sanitize(selectedPose || ''),
+    sanitize(selectedScene || ''),
+    sanitize(selectedMood || ''),
+    sanitize(selectedArtStyle || ''),
+  ].filter(Boolean);
+
+  if (parts.length > 1) {
+    return `${parts.join('_')}.png`;
+  }
+
+  // Fallback
+  return `${datePart}_character-remix.png`;
+}
+
 // --- Main Functions ---
 
 /**
@@ -174,7 +209,7 @@ function renderOptionsForCategory(category: string) {
 /**
  * Generates an image based on the source image and a prompt.
  */
-async function generateImage(apiKey: string, prompt: string): Promise<void> {
+async function generateImage(apiKey: string, prompt: string, filename: string): Promise<void> {
   if (!sourceImageBase64 || !clothingImageBase64) {
     throw new Error('Source images have not been loaded.');
   }
@@ -212,7 +247,7 @@ async function generateImage(apiKey: string, prompt: string): Promise<void> {
       outputImage.src = imageUrl;
       outputImage.style.display = 'block';
       downloadButton.href = imageUrl;
-      downloadButton.download = 'character-remix.png';
+      downloadButton.download = filename;
       downloadButton.classList.remove('hidden');
       return;
     }
@@ -331,7 +366,7 @@ async function loadCreativeOptions() {
 }
 
 
-async function performGeneration(prompt: string) {
+async function performGeneration(prompt: string, filename: string) {
   const apiKey = apiKeyInput.value.trim();
   if (!apiKey || !isApiKeyValid) {
     showStatusError('Please enter and validate a valid API key first.');
@@ -353,7 +388,7 @@ async function performGeneration(prompt: string) {
   setControlsDisabled(true);
 
   try {
-    await generateImage(apiKey, prompt);
+    await generateImage(apiKey, prompt, filename);
     statusEl.innerText = ''; // Clear status on success
     promptInputEl.value = prompt; // Populate textarea with the prompt used
     promptControlsEl.classList.remove('hidden'); // Make textarea and re-gen button visible
@@ -370,6 +405,8 @@ async function performGeneration(prompt: string) {
         isApiKeyValid = false;
         apiKeyStatus.textContent = '❌ Invalid';
         apiKeyStatus.className = 'text-sm text-red-400';
+      } else if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
+         userFriendlyMessage = `You've exceeded your usage quota. This can happen on the free tier even with low usage. <br> Please <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" class="text-blue-400 hover:underline font-semibold">enable billing</a> on your Google Cloud project to continue.`;
       }
     }
     showStatusError(userFriendlyMessage);
@@ -404,7 +441,8 @@ async function handleGenerateNewClick() {
       " The character's mouth is closed, with their eyes crinkling to show laughter.";
   }
 
-  await performGeneration(prompt);
+  const filename = generateFilename();
+  await performGeneration(prompt, filename);
 }
 
 async function handleRegenerateClick() {
@@ -413,7 +451,8 @@ async function handleRegenerateClick() {
     showStatusError('Please enter a prompt in the text field to re-generate.');
     return;
   }
-  await performGeneration(prompt);
+  const filename = generateFilename(prompt);
+  await performGeneration(prompt, filename);
 }
 
 function handleCategoryTabClick(event: MouseEvent) {

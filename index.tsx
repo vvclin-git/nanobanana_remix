@@ -6,28 +6,6 @@
  */
 import {GoogleGenAI, Modality, Type} from '@google/genai';
 
-// Fix: Define and use AIStudio interface for window.aistudio to resolve type conflict.
-// Define the aistudio property on the window object for TypeScript
-declare global {
-  interface AIStudio {
-    openSelectKey: () => Promise<void>;
-  }
-  interface Window {
-    aistudio?: AIStudio;
-  }
-}
-
-async function openApiKeyDialog() {
-  if (window.aistudio?.openSelectKey) {
-    await window.aistudio.openSelectKey();
-  } else {
-    // This provides a fallback for environments where the dialog isn't available
-    showStatusError(
-      'API key selection is not available. Please configure the API_KEY environment variable.',
-    );
-  }
-}
-
 // --- DOM Element Selection ---
 const statusEl = document.querySelector('#status') as HTMLParagraphElement;
 const generateButton = document.querySelector(
@@ -62,6 +40,12 @@ const backButton = document.querySelector('#back-button') as HTMLButtonElement;
 const categoryTabs = document.querySelectorAll<HTMLButtonElement>('.category-tab');
 const sharedOptionsContainer = document.querySelector('#options-container-shared') as HTMLDivElement;
 
+// New selectors for API Key UI
+const apiKeyInput = document.querySelector('#api-key-input') as HTMLInputElement;
+const validateKeyButton = document.querySelector('#validate-key-button') as HTMLButtonElement;
+const apiKeyStatus = document.querySelector('#api-key-status') as HTMLParagraphElement;
+
+
 // --- State Variables ---
 let selectedPose: string | null = null;
 let selectedScene: string | null = null;
@@ -73,6 +57,7 @@ let activeCategory: string | null = null;
 let allOptions: Record<string, string[]> = {};
 let lastGenerationTime = 0;
 const API_CALL_COOLDOWN_MS = 10000; // 10 seconds
+let isApiKeyValid = false;
 
 // --- Utility Functions ---
 async function fileUrlToBase64(url: string): Promise<string> {
@@ -90,6 +75,35 @@ async function fileUrlToBase64(url: string): Promise<string> {
 }
 
 // --- Main Functions ---
+
+/**
+ * Validates the API key by making a lightweight call.
+ */
+async function validateApiKey(apiKey: string): Promise<boolean> {
+    if (!apiKey) return false;
+    apiKeyStatus.textContent = 'Checking...';
+    apiKeyStatus.className = 'text-sm text-gray-500';
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'hello' });
+        apiKeyStatus.textContent = '✅ Valid';
+        apiKeyStatus.className = 'text-sm text-green-400';
+        localStorage.setItem('gemini-api-key', apiKey);
+        isApiKeyValid = true;
+        setControlsDisabled(false); // Enable controls on valid key
+        statusEl.innerText = 'API key is valid. Ready to generate!';
+        return true;
+    } catch (e) {
+        console.error('API Key validation failed', e);
+        apiKeyStatus.textContent = '❌ Invalid';
+        apiKeyStatus.className = 'text-sm text-red-400';
+        localStorage.removeItem('gemini-api-key');
+        isApiKeyValid = false;
+        setControlsDisabled(true); // Keep controls disabled
+        statusEl.innerText = '';
+        return false;
+    }
+}
 
 /**
  * Calls Gemini to generate creative options for poses, scenes, and moods.
@@ -231,6 +245,11 @@ function showStatusError(message: string) {
 }
 
 function setControlsDisabled(disabled: boolean) {
+  // Always keep API key controls enabled
+  apiKeyInput.disabled = false;
+  validateKeyButton.disabled = false;
+    
+  // Toggle main app controls
   generateButton.disabled = disabled;
   regenerateButton.disabled = disabled;
   document
@@ -239,24 +258,15 @@ function setControlsDisabled(disabled: boolean) {
 }
 
 async function initializeApp() {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    showStatusError('API key not configured. Please add your API key.');
-    await openApiKeyDialog();
-    return;
-  }
-
   setControlsDisabled(true);
-  statusEl.innerText = 'Loading creative options...';
+  statusEl.innerText = 'Please add your Gemini API key to begin.';
 
   try {
-    // Load images and generate creative options in parallel
-    const optionsPromise = generateOptions(apiKey);
+    // Load local assets first, they don't depend on the API key
     const characterImagePromise = fileUrlToBase64('character.png');
     const clothingImagePromise = fileUrlToBase64('clothing.png');
 
-    const [options, characterBase64, clothingBase64] = await Promise.all([
-      optionsPromise,
+    const [characterBase64, clothingBase64] = await Promise.all([
       characterImagePromise,
       clothingImagePromise,
     ]);
@@ -266,16 +276,13 @@ async function initializeApp() {
     sourceImage.src = `data:image/png;base64,${sourceImageBase64}`;
     clothingImageBase64 = clothingBase64;
     clothingImage.src = `data:image/png;base64,${clothingImageBase64}`;
-
-    // Store all options in the state object
-    allOptions.poses = options.poses;
-    allOptions.scenes = options.scenes;
-    allOptions.moods = options.moods;
-    allOptions.artstyle = ["Photorealistic", "Cartoon", "Illustration"];
-
-    // Pre-select options in the background without updating UI yet
-    preselectRandomOptions();
-    statusEl.innerText = '';
+    
+    // Load API key from localStorage if it exists
+    const savedApiKey = localStorage.getItem('gemini-api-key');
+    if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+        await validateApiKey(savedApiKey); // Auto-validate on load
+    }
   } catch (e) {
     console.error('Initialization failed:', e);
     const errorMessage =
@@ -288,18 +295,46 @@ async function initializeApp() {
         "Error: Could not load 'character.png' or 'clothing.png'. Please make sure both are uploaded.",
       );
     } else {
-      showStatusError(`Error during setup: ${errorMessage}`);
+      showStatusError(`Error during asset loading: ${errorMessage}`);
     }
-  } finally {
-    setControlsDisabled(false);
   }
 }
 
+async function loadCreativeOptions() {
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey || !isApiKeyValid) {
+        showStatusError('Please validate your API key to load creative options.');
+        return;
+    }
+    
+    setControlsDisabled(true);
+    statusEl.innerText = 'Loading creative options...';
+
+    try {
+        const options = await generateOptions(apiKey);
+        // Store all options in the state object
+        allOptions.poses = options.poses;
+        allOptions.scenes = options.scenes;
+        allOptions.moods = options.moods;
+        allOptions.artstyle = ["Photorealistic", "Cartoon", "Illustration"];
+
+        // Pre-select options in the background without updating UI yet
+        preselectRandomOptions();
+        statusEl.innerText = 'Ready to generate!';
+    } catch (e) {
+        console.error('Failed to generate options:', e);
+        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+        showStatusError(`Error loading options: ${errorMessage}`);
+    } finally {
+        setControlsDisabled(false);
+    }
+}
+
+
 async function performGeneration(prompt: string) {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) {
-    showStatusError('API key not configured. Please add your API key.');
-    await openApiKeyDialog();
+  const apiKey = apiKeyInput.value.trim();
+  if (!apiKey || !isApiKeyValid) {
+    showStatusError('Please enter and validate a valid API key first.');
     return;
   }
   
@@ -324,40 +359,35 @@ async function performGeneration(prompt: string) {
     promptControlsEl.classList.remove('hidden'); // Make textarea and re-gen button visible
   } catch (e) {
     console.error('Image generation failed:', e);
-    const errorMessage =
-      e instanceof Error ? e.message : 'An unknown error occurred.';
+    const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
 
     let userFriendlyMessage = `Error: ${errorMessage}`;
-    let shouldOpenDialog = false;
 
     if (typeof errorMessage === 'string') {
-      if (errorMessage.includes('Requested entity was not found.')) {
-        userFriendlyMessage =
-          'Model not found. This can be caused by an invalid API key or permission issues. Please check your API key.';
-        shouldOpenDialog = true;
-      } else if (
-        errorMessage.includes('API_KEY_INVALID') ||
-        errorMessage.includes('API key not valid') ||
-        errorMessage.toLowerCase().includes('permission denied')
-      ) {
-        userFriendlyMessage =
-          'Your API key is invalid. Please add a valid API key.';
-        shouldOpenDialog = true;
+      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('permission denied')) {
+        userFriendlyMessage = 'The API key became invalid. Please check and re-validate it.';
+        // Invalidate the key state
+        isApiKeyValid = false;
+        apiKeyStatus.textContent = '❌ Invalid';
+        apiKeyStatus.className = 'text-sm text-red-400';
       }
     }
-
     showStatusError(userFriendlyMessage);
-
-    if (shouldOpenDialog) {
-      await openApiKeyDialog();
-    }
   } finally {
     loader.classList.add('hidden');
-    setControlsDisabled(false);
+    // Re-enable controls, but check if the key is still considered valid
+    setControlsDisabled(!isApiKeyValid);
   }
 }
 
 async function handleGenerateNewClick() {
+  // Lazy-load options if they haven't been loaded yet
+  if (!allOptions.poses) {
+      await loadCreativeOptions();
+      // If loading fails, allOptions will still be empty, so we exit.
+      if (!allOptions.poses) return;
+  }
+
   if (!selectedPose || !selectedScene || !selectedMood || !selectedArtStyle) {
     showStatusError('Please select an option from each category.');
     return;
@@ -387,6 +417,13 @@ async function handleRegenerateClick() {
 }
 
 function handleCategoryTabClick(event: MouseEvent) {
+  // If options haven't been loaded, load them first.
+  if (!allOptions.poses) {
+      loadCreativeOptions();
+      // Prevent tab from opening until options are loaded.
+      return; 
+  }
+
   const clickedButton = event.currentTarget as HTMLButtonElement;
   const category = clickedButton.dataset.category!;
   const isClosing = activeCategory === category;
@@ -413,6 +450,21 @@ function handleCategoryTabClick(event: MouseEvent) {
 // --- Event Listeners & Initialization ---
 generateButton.addEventListener('click', handleGenerateNewClick);
 regenerateButton.addEventListener('click', handleRegenerateClick);
+
+validateKeyButton.addEventListener('click', () => {
+    const apiKey = apiKeyInput.value.trim();
+    validateApiKey(apiKey);
+});
+
+apiKeyInput.addEventListener('input', () => {
+    // When user types, reset status if it was valid
+    if (isApiKeyValid) {
+        isApiKeyValid = false;
+        apiKeyStatus.textContent = 'Unchecked';
+        apiKeyStatus.className = 'text-sm text-gray-500';
+        setControlsDisabled(true); // Disable controls until re-validated
+    }
+});
 
 viewAssetsButton.addEventListener('click', () => {
   mainView.classList.add('hidden');

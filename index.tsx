@@ -36,15 +36,8 @@ const viewAssetsButton = document.querySelector(
 ) as HTMLButtonElement;
 const backButton = document.querySelector('#back-button') as HTMLButtonElement;
 
-// New selectors for tabbed UI
 const categoryTabs = document.querySelectorAll<HTMLButtonElement>('.category-tab');
 const sharedOptionsContainer = document.querySelector('#options-container-shared') as HTMLDivElement;
-
-// New selectors for API Key UI
-const apiKeyInput = document.querySelector('#api-key-input') as HTMLInputElement;
-const validateKeyButton = document.querySelector('#validate-key-button') as HTMLButtonElement;
-const apiKeyStatus = document.querySelector('#api-key-status') as HTMLParagraphElement;
-
 
 // --- State Variables ---
 let selectedPose: string | null = null;
@@ -53,11 +46,11 @@ let selectedMood: string | null = null;
 let selectedArtStyle: string | null = null;
 let sourceImageBase64: string | null = null;
 let clothingImageBase64: string | null = null;
+let systemPromptText: string = '';
 let activeCategory: string | null = null;
 let allOptions: Record<string, string[]> = {};
 let lastGenerationTime = 0;
 const API_CALL_COOLDOWN_MS = 10000; // 10 seconds
-let isApiKeyValid = false;
 
 // --- Utility Functions ---
 async function fileUrlToBase64(url: string): Promise<string> {
@@ -74,77 +67,13 @@ async function fileUrlToBase64(url: string): Promise<string> {
   });
 }
 
-/**
- * Generates a descriptive filename for the downloaded image.
- */
-function generateFilename(fromPrompt?: string): string {
-  const now = new Date();
-  const datePart = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  const sanitize = (str: string) =>
-    str
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]+/g, '') // remove special chars except space
-      .trim()
-      .replace(/\s+/g, '-'); // replace spaces with dashes
-
-  if (fromPrompt) {
-    // Use the first few words of the prompt for the filename
-    const promptPart = sanitize(fromPrompt.split(/\s+/).slice(0, 5).join(' '));
-    return `${datePart}_${promptPart}.png`;
-  }
-
-  const parts = [
-    datePart,
-    sanitize(selectedPose || ''),
-    sanitize(selectedScene || ''),
-    sanitize(selectedMood || ''),
-    sanitize(selectedArtStyle || ''),
-  ].filter(Boolean);
-
-  if (parts.length > 1) {
-    return `${parts.join('_')}.png`;
-  }
-
-  // Fallback
-  return `${datePart}_character-remix.png`;
-}
-
 // --- Main Functions ---
-
-/**
- * Validates the API key by making a lightweight call.
- */
-async function validateApiKey(apiKey: string): Promise<boolean> {
-    if (!apiKey) return false;
-    apiKeyStatus.textContent = 'Checking...';
-    apiKeyStatus.className = 'text-sm text-gray-500';
-    try {
-        const ai = new GoogleGenAI({ apiKey });
-        await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'hello' });
-        apiKeyStatus.textContent = '✅ Valid';
-        apiKeyStatus.className = 'text-sm text-green-400';
-        localStorage.setItem('gemini-api-key', apiKey);
-        isApiKeyValid = true;
-        setControlsDisabled(false); // Enable controls on valid key
-        statusEl.innerText = 'API key is valid. Ready to generate!';
-        return true;
-    } catch (e) {
-        console.error('API Key validation failed', e);
-        apiKeyStatus.textContent = '❌ Invalid';
-        apiKeyStatus.className = 'text-sm text-red-400';
-        localStorage.removeItem('gemini-api-key');
-        isApiKeyValid = false;
-        setControlsDisabled(true); // Keep controls disabled
-        statusEl.innerText = '';
-        return false;
-    }
-}
 
 /**
  * Calls Gemini to generate creative options for poses, scenes, and moods.
  */
-async function generateOptions(apiKey: string) {
-  const ai = new GoogleGenAI({apiKey});
+async function generateOptions() {
+  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents:
@@ -205,16 +134,54 @@ function renderOptionsForCategory(category: string) {
   }
 }
 
+/**
+ * Generates a descriptive filename for the downloaded image.
+ */
+function generateFilename(fromPrompt?: string): string {
+  const now = new Date();
+  const datePart = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  const sanitize = (str: string) =>
+    str
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]+/g, '') // remove special chars except space
+      .trim()
+      .replace(/\s+/g, '-'); // replace spaces with dashes
+
+  if (fromPrompt) {
+    // Split the prompt to isolate the user-facing part after the separator
+    const promptParts = fromPrompt.split('---');
+    const userPrompt = promptParts[promptParts.length - 1] || fromPrompt;
+
+    // Use the first few words of the user prompt for the filename
+    const promptPart = sanitize(userPrompt.trim().split(/\s+/).slice(0, 5).join(' '));
+    return `${datePart}_${promptPart}.png`;
+  }
+
+  const parts = [
+    datePart,
+    sanitize(selectedPose || ''),
+    sanitize(selectedScene || ''),
+    sanitize(selectedMood || ''),
+    sanitize(selectedArtStyle || ''),
+  ].filter(Boolean);
+
+  if (parts.length > 1) {
+    return `${parts.join('_')}.png`;
+  }
+
+  // Fallback
+  return `${datePart}_character-remix.png`;
+}
 
 /**
  * Generates an image based on the source image and a prompt.
  */
-async function generateImage(apiKey: string, prompt: string, filename: string): Promise<void> {
+async function generateImage(prompt: string): Promise<void> {
   if (!sourceImageBase64 || !clothingImageBase64) {
     throw new Error('Source images have not been loaded.');
   }
 
-  const ai = new GoogleGenAI({apiKey});
+  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
@@ -247,7 +214,7 @@ async function generateImage(apiKey: string, prompt: string, filename: string): 
       outputImage.src = imageUrl;
       outputImage.style.display = 'block';
       downloadButton.href = imageUrl;
-      downloadButton.download = filename;
+      downloadButton.download = generateFilename(prompt);
       downloadButton.classList.remove('hidden');
       return;
     }
@@ -280,11 +247,6 @@ function showStatusError(message: string) {
 }
 
 function setControlsDisabled(disabled: boolean) {
-  // Always keep API key controls enabled
-  apiKeyInput.disabled = false;
-  validateKeyButton.disabled = false;
-    
-  // Toggle main app controls
   generateButton.disabled = disabled;
   regenerateButton.disabled = disabled;
   document
@@ -292,18 +254,42 @@ function setControlsDisabled(disabled: boolean) {
     .forEach(button => ((button as HTMLButtonElement).disabled = disabled));
 }
 
+function handleApiError(e: unknown) {
+  console.error('API Error:', e);
+  const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+
+  let userFriendlyMessage = `Error: ${errorMessage}`;
+
+  if (typeof errorMessage === 'string') {
+    if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('permission denied') || errorMessage.includes('Requested entity was not found')) {
+      userFriendlyMessage = 'The API key is invalid or not found. Please use the "Select API Key" button in the banner to provide a valid key.';
+      // Keep controls disabled as no API calls can succeed
+      setControlsDisabled(true); 
+    } else if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
+       userFriendlyMessage = `You've exceeded your usage quota. This can happen on the free tier. <br> Please <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" class="text-blue-400 hover:underline font-semibold">enable billing</a> on your Google Cloud project.`;
+    }
+  }
+  showStatusError(userFriendlyMessage);
+}
+
+
 async function initializeApp() {
   setControlsDisabled(true);
-  statusEl.innerText = 'Please add your Gemini API key to begin.';
+  statusEl.innerText = 'Initializing...';
 
   try {
-    // Load local assets first, they don't depend on the API key
+    // Load local assets and system prompt
     const characterImagePromise = fileUrlToBase64('character.png');
     const clothingImagePromise = fileUrlToBase64('clothing.png');
+    const systemPromptPromise = fetch('system_prompt.txt').then(res => {
+        if (!res.ok) throw new Error(`Failed to fetch system_prompt.txt: ${res.statusText}`);
+        return res.text();
+    });
 
-    const [characterBase64, clothingBase64] = await Promise.all([
+    const [characterBase64, clothingBase64, systemPrompt] = await Promise.all([
       characterImagePromise,
       clothingImagePromise,
+      systemPromptPromise,
     ]);
 
     // Set state and update image elements
@@ -311,23 +297,18 @@ async function initializeApp() {
     sourceImage.src = `data:image/png;base64,${sourceImageBase64}`;
     clothingImageBase64 = clothingBase64;
     clothingImage.src = `data:image/png;base64,${clothingImageBase64}`;
+    systemPromptText = systemPrompt;
     
-    // Load API key from localStorage if it exists
-    const savedApiKey = localStorage.getItem('gemini-api-key');
-    if (savedApiKey) {
-        apiKeyInput.value = savedApiKey;
-        await validateApiKey(savedApiKey); // Auto-validate on load
-    }
+    // Directly attempt to load creative options, assuming a key is present.
+    await loadCreativeOptions();
+    
   } catch (e) {
+    // This catch is mainly for asset loading errors, as loadCreativeOptions has its own try/catch.
     console.error('Initialization failed:', e);
-    const errorMessage =
-      e instanceof Error ? e.message : 'An unknown error occurred.';
-    if (
-      errorMessage.includes('404') ||
-      errorMessage.includes('Failed to fetch image')
-    ) {
+    const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+    if (errorMessage.includes('Failed to fetch')) {
       showStatusError(
-        "Error: Could not load 'character.png' or 'clothing.png'. Please make sure both are uploaded.",
+        "Error: Could not load a required asset file (character.png, clothing.png, or system_prompt.txt). Please make sure all files are uploaded.",
       );
     } else {
       showStatusError(`Error during asset loading: ${errorMessage}`);
@@ -336,17 +317,11 @@ async function initializeApp() {
 }
 
 async function loadCreativeOptions() {
-    const apiKey = apiKeyInput.value.trim();
-    if (!apiKey || !isApiKeyValid) {
-        showStatusError('Please validate your API key to load creative options.');
-        return;
-    }
-    
     setControlsDisabled(true);
     statusEl.innerText = 'Loading creative options...';
 
     try {
-        const options = await generateOptions(apiKey);
+        const options = await generateOptions();
         // Store all options in the state object
         allOptions.poses = options.poses;
         allOptions.scenes = options.scenes;
@@ -356,23 +331,15 @@ async function loadCreativeOptions() {
         // Pre-select options in the background without updating UI yet
         preselectRandomOptions();
         statusEl.innerText = 'Ready to generate!';
-    } catch (e) {
-        console.error('Failed to generate options:', e);
-        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        showStatusError(`Error loading options: ${errorMessage}`);
-    } finally {
         setControlsDisabled(false);
+    } catch (e) {
+        handleApiError(e);
+        // Ensure controls remain disabled if options fail to load.
+        setControlsDisabled(true);
     }
 }
 
-
-async function performGeneration(prompt: string, filename: string) {
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey || !isApiKeyValid) {
-    showStatusError('Please enter and validate a valid API key first.');
-    return;
-  }
-  
+async function performGeneration(fullPrompt: string, userPrompt: string) {
   const now = Date.now();
   if (now - lastGenerationTime < API_CALL_COOLDOWN_MS) {
     const timeLeft = Math.ceil((API_CALL_COOLDOWN_MS - (now - lastGenerationTime)) / 1000);
@@ -388,32 +355,16 @@ async function performGeneration(prompt: string, filename: string) {
   setControlsDisabled(true);
 
   try {
-    await generateImage(apiKey, prompt, filename);
+    await generateImage(fullPrompt);
     statusEl.innerText = ''; // Clear status on success
-    promptInputEl.value = prompt; // Populate textarea with the prompt used
+    promptInputEl.value = userPrompt; // Populate textarea with the user-facing prompt
     promptControlsEl.classList.remove('hidden'); // Make textarea and re-gen button visible
+    setControlsDisabled(false); // Re-enable controls on success
   } catch (e) {
-    console.error('Image generation failed:', e);
-    const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-
-    let userFriendlyMessage = `Error: ${errorMessage}`;
-
-    if (typeof errorMessage === 'string') {
-      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('permission denied')) {
-        userFriendlyMessage = 'The API key became invalid. Please check and re-validate it.';
-        // Invalidate the key state
-        isApiKeyValid = false;
-        apiKeyStatus.textContent = '❌ Invalid';
-        apiKeyStatus.className = 'text-sm text-red-400';
-      } else if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-         userFriendlyMessage = `You've exceeded your usage quota. This can happen on the free tier even with low usage. <br> Please <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" class="text-blue-400 hover:underline font-semibold">enable billing</a> on your Google Cloud project to continue.`;
-      }
-    }
-    showStatusError(userFriendlyMessage);
+    handleApiError(e);
+    // On failure, controls are not re-enabled.
   } finally {
     loader.classList.add('hidden');
-    // Re-enable controls, but check if the key is still considered valid
-    setControlsDisabled(!isApiKeyValid);
   }
 }
 
@@ -430,40 +381,37 @@ async function handleGenerateNewClick() {
     return;
   }
   
-  let prompt = `A cartoon character wearing the provided clothing, ${selectedPose}, in a ${selectedScene}, in a ${selectedMood} mood, in the style of ${selectedArtStyle}.`;
+  const variantsPrompt = `Redraw the character wearing the provided clothing, ${selectedPose}, in a ${selectedScene}, in a ${selectedMood} mood, in the style of ${selectedArtStyle}.`;
+  
+  // Combine the loaded system prompt with the dynamic variants prompt
+  const finalPrompt = `${systemPromptText}\n\n---\n\n${variantsPrompt}`;
 
-  // Add special instruction for laughing expressions
-  if (
-    selectedMood.toLowerCase().includes('laugh') ||
-    selectedPose.toLowerCase().includes('laugh')
-  ) {
-    prompt +=
-      " The character's mouth is closed, with their eyes crinkling to show laughter.";
-  }
-
-  const filename = generateFilename();
-  await performGeneration(prompt, filename);
+  await performGeneration(finalPrompt, variantsPrompt);
 }
 
 async function handleRegenerateClick() {
-  const prompt = promptInputEl.value.trim();
-  if (!prompt) {
+  const userPrompt = promptInputEl.value.trim();
+  if (!userPrompt) {
     showStatusError('Please enter a prompt in the text field to re-generate.');
     return;
   }
-  const filename = generateFilename(prompt);
-  await performGeneration(prompt, filename);
+  
+  // Re-combine the user's edited prompt with the system prompt
+  const fullPrompt = `${systemPromptText}\n\n---\n\n${userPrompt}`;
+  await performGeneration(fullPrompt, userPrompt);
 }
 
-function handleCategoryTabClick(event: MouseEvent) {
-  // If options haven't been loaded, load them first.
+async function handleCategoryTabClick(event: MouseEvent) {
+  const clickedButton = event.currentTarget as HTMLButtonElement;
+
+  // If options haven't been loaded yet (e.g., due to an initial API error), 
+  // try loading them again when the user interacts with the UI.
   if (!allOptions.poses) {
-      loadCreativeOptions();
-      // Prevent tab from opening until options are loaded.
-      return; 
+      await loadCreativeOptions();
+      // If loading still fails, exit so the user isn't stuck.
+      if (!allOptions.poses) return; 
   }
 
-  const clickedButton = event.currentTarget as HTMLButtonElement;
   const category = clickedButton.dataset.category!;
   const isClosing = activeCategory === category;
 
@@ -490,21 +438,6 @@ function handleCategoryTabClick(event: MouseEvent) {
 generateButton.addEventListener('click', handleGenerateNewClick);
 regenerateButton.addEventListener('click', handleRegenerateClick);
 
-validateKeyButton.addEventListener('click', () => {
-    const apiKey = apiKeyInput.value.trim();
-    validateApiKey(apiKey);
-});
-
-apiKeyInput.addEventListener('input', () => {
-    // When user types, reset status if it was valid
-    if (isApiKeyValid) {
-        isApiKeyValid = false;
-        apiKeyStatus.textContent = 'Unchecked';
-        apiKeyStatus.className = 'text-sm text-gray-500';
-        setControlsDisabled(true); // Disable controls until re-validated
-    }
-});
-
 viewAssetsButton.addEventListener('click', () => {
   mainView.classList.add('hidden');
   assetsView.classList.remove('hidden');
@@ -516,5 +449,8 @@ backButton.addEventListener('click', () => {
 });
 
 categoryTabs.forEach(tab => tab.addEventListener('click', handleCategoryTabClick));
+
+// Expose a function for the banner to call after API key selection
+(window as any).loadCreativeOptionsForAistudio = loadCreativeOptions;
 
 initializeApp();

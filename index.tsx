@@ -214,7 +214,7 @@ async function generateImage(prompt: string): Promise<void> {
       outputImage.src = imageUrl;
       outputImage.style.display = 'block';
       downloadButton.href = imageUrl;
-      downloadButton.download = generateFilename(prompt);
+      downloadButton.download = generateFilename();
       downloadButton.classList.remove('hidden');
       return;
     }
